@@ -1,15 +1,21 @@
-***This branch is unmaintained!***
-https://github.com/toriato/stable-diffusion-webui-wd14-tagger/issues/108
----
 https://github.com/picobyte/stable-diffusion-webui-wd14-tagger
-
 
 # Tagger for [Automatic1111's WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
 Interrogate booru style tags for single or multiple image files using various models, such as DeepDanbooru.
 
 This branch is a fork of WD14Tagger maintained by @Akegarasu
 
-[한국어를 사용하시나요? 여기에 한국어 설명서가 있습니다!](README.ko.md)
+TaggerList
+・pixai-tagger-v0.9
+・OppaiOracle-v1.1
+・wd-EVA02-Large-v3
+・wd-ViT-Large-v3
+・wd-swinv2-v3
+・wd-convnext-v3
+・wd-vit-v3
+・wd-swinv2-v3
+・idolsankaku-eva02-large-v1
+・idolsankaku-swinv2-v1
 
 ## Disclaimer
 I didn't make any models, and most of the code was heavily borrowed from the [DeepDanbooru](https://github.com/KichangKim/DeepDanbooru) and MrSmillingWolf's tagger.
@@ -18,7 +24,7 @@ I didn't make any models, and most of the code was heavily borrowed from the [De
 1. *Extensions* -> *Install from URL* -> Enter URL of this repository -> Press *Install* button
    - or clone this repository under `extensions/`
       ```sh
-      $ git clone https://github.com/toriato/stable-diffusion-webui-wd14-tagger.git extensions/tagger
+      $ git clone https://github.com/szxex/stable-diffusion-webui-wd14-tagger.git extensions/tagger
       ```
 
 1. *(optional)* Add interrogate model
