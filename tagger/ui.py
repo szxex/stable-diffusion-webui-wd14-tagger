@@ -7,7 +7,7 @@ from pathlib import Path
 from glob import glob
 from PIL import Image, UnidentifiedImageError
 
-from webui import wrap_gradio_gpu_call
+from modules.call_queue import wrap_gradio_gpu_call
 from modules import ui
 from modules import generation_parameters_copypaste as parameters_copypaste
 
@@ -53,6 +53,10 @@ def on_interrogate(
 
     interrogator: Interrogator = utils.interrogators[interrogator]
 
+    process_opts = (
+        threshold,
+    )
+
     postprocess_opts = (
         threshold,
         split_str(additional_tags),
@@ -66,7 +70,7 @@ def on_interrogate(
 
     # single process
     if image is not None:
-        ratings, tags = interrogator.interrogate(image)
+        ratings, tags = interrogator.interrogate(image,*process_opts)
         processed_tags = Interrogator.postprocess_tags(
             tags,
             *postprocess_opts
