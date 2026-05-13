@@ -4,7 +4,7 @@ from modules.api import models as sd_models
 from pydantic import BaseModel, Field
 
 
-class TaggerInterrogateRequest(sd_models.InterrogateRequest):
+class TaggerInterrogateRequest(BaseModel):
     model: str = Field(
         title='Model',
         description='The interrogate model used.'
