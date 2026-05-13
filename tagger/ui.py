@@ -1,6 +1,7 @@
 import os
 import json
 import gradio as gr
+import ast
 
 from collections import OrderedDict
 from pathlib import Path
@@ -25,6 +26,39 @@ def unload_interrogators():
 
     return [f'Successfully unload {unloaded_models} model(s)']
 
+def parse_kwargs(kwargs_str: str) -> dict:
+    """
+    キーワード引数形式の文字列を辞書(dict)に変換する。
+    空文字列の場合は空の辞書を返す。
+    """
+    # 空文字列や空白のみの場合は空の辞書を返す
+    if not kwargs_str or not kwargs_str.strip():
+        return {}
+    
+    # ダミーの関数呼び出し文字列を作成して構文解析（パース）する
+    # 例: "fmt=('a'), aa=1" -> "dummy(fmt=('a'), aa=1)"
+    code = f"dummy({kwargs_str})"
+    
+    try:
+        # 文字列をPythonの構文木（AST）に変換
+        tree = ast.parse(code)
+        
+        # 関数呼び出し部分のノードを取得
+        call_node = tree.body[0].value
+        
+        # キーワード引数を抽出して辞書に格納
+        kwargs_dict = {}
+        for keyword in call_node.keywords:
+            if keyword.arg is not None:
+                # ast.literal_eval で文字列からPythonのデータ型へ安全に変換
+                kwargs_dict[keyword.arg] = ast.literal_eval(keyword.value)
+                
+        return kwargs_dict
+
+    except SyntaxError as e:
+        raise ValueError(f"構文エラーです。キーワード引数の形式を確認してください: {kwargs_str}") from e
+    except ValueError as e:
+        raise ValueError(f"安全に評価できない値が含まれています: {kwargs_str}") from e
 
 def on_interrogate(
     image: Image,
@@ -37,6 +71,7 @@ def on_interrogate(
     batch_output_save_json: bool,
 
     interrogator: str,
+    interrogator_option: str,
     threshold: float,
     additional_tags: str,
     exclude_tags: str,
@@ -56,6 +91,7 @@ def on_interrogate(
     process_opts = (
         threshold,
     )
+    process_kwargs = parse_kwargs(interrogator_option)
 
     postprocess_opts = (
         threshold,
@@ -70,7 +106,7 @@ def on_interrogate(
 
     # single process
     if image is not None:
-        ratings, tags = interrogator.interrogate(image,*process_opts)
+        ratings, tags = interrogator.interrogate(image,*process_opts,**process_kwargs)
         processed_tags = Interrogator.postprocess_tags(
             tags,
             *postprocess_opts
@@ -348,6 +384,12 @@ def on_ui_tabs():
                             lambda: {'choices': utils.refresh_interrogators()},
                             'refresh_interrogator'
                         )
+                        
+                        interrogator_option = utils.preset.component(
+                            gr.Textbox,
+                            label='Interrogator Option (split by comma)',
+                            elem_id='interrogator-option'
+                        )
 
                     unload_all_models = gr.Button(
                         value='Unload all interrogate models'
@@ -464,6 +506,7 @@ def on_ui_tabs():
 
                     # options
                     interrogator,
+                    interrogator_option,
                     threshold,
                     additional_tags,
                     exclude_tags,
