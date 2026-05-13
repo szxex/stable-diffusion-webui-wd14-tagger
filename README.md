@@ -1,24 +1,35 @@
-https://github.com/picobyte/stable-diffusion-webui-wd14-tagger
+# Tagger for [Automatic1111's WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) & [Stable Diffusion WebUI Forge - Neo & Classic](https://github.com/Haoming02/sd-webui-forge-classic)
 
-# Tagger for [Automatic1111's WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
-Interrogate booru style tags for single or multiple image files using various models, such as DeepDanbooru.
+Interrogate booru style tags for single or multiple image files using various models
 
 This branch is a fork of WD14Tagger maintained by @Akegarasu
 
-TaggerList
-・pixai-tagger-v0.9
-・OppaiOracle-v1.1
-・wd-EVA02-Large-v3
-・wd-ViT-Large-v3
-・wd-swinv2-v3
-・wd-convnext-v3
-・wd-vit-v3
-・wd-swinv2-v3
-・idolsankaku-eva02-large-v1
-・idolsankaku-swinv2-v1
+### Tagger（interrogate model）
+- [pixai-tagger-v0.9](https://huggingface.co/deepghs/pixai-tagger-v0.9-onnx)
+- [OppaiOracle-v1.1](https://huggingface.co/Grio43/OppaiOracle)
+- [camie-tagger-v2](https://huggingface.co/Camais03/camie-tagger-v2)
+- [WD EVA02-Large Tagger v3](https://huggingface.co/SmilingWolf/wd-eva02-large-tagger-v3)
+- [WD ViT-Large Tagger v3](https://huggingface.co/SmilingWolf/wd-vit-large-tagger-v3)
+- [WD SwinV2 Tagger v3](https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3)
+- [WD ConvNext Tagger v3](https://huggingface.co/SmilingWolf/wd-convnext-tagger-v3)
+- [WD ViT Tagger v3](https://huggingface.co/SmilingWolf/wd-vit-tagger-v3)
+- [IdolSankaku EVA02-Large Tagger v1](https://huggingface.co/deepghs/idolsankaku-eva02-large-tagger-v1)
+- [IdolSankaku SwinV2 Tagger v1](https://huggingface.co/deepghs/idolsankaku-swinv2-tagger-v1)
+- [PixAI Tagger v0.9 (with EVA02-Large Encoder)](https://huggingface.co/etset/pixai-tagger-v0.9E)
 
-## Disclaimer
-I didn't make any models, and most of the code was heavily borrowed from the [DeepDanbooru](https://github.com/KichangKim/DeepDanbooru) and MrSmillingWolf's tagger.
+### Add Feater
+  - `Interrogator Option`
+     - `pixai-tagger-v0.9`
+        - 'character_thresholds'
+           - Set individual thresholds for character detection in `character_thresholds`
+           - ex) character_thresholds=0.6
+     - `camie-tagger-v2`
+        - 'fmt'
+           - Set the specified categories as the output targets. The default is (‘character’, ‘general’, ‘rating’). 
+           - ex) fmt=('artist','character','copyright','general','meta','rating','year') 
+        - 'category_thresholds'
+           - Set a threshold for each specified category. By default, all categories use the same threshold.
+           - ex) category_thresholds={"artist":0.5,"character":0.8,"copyright":0.7,"general":0.3,"meta":0.2,"rating":0.5,"year":0.2} 
 
 ## Installation
 1. *Extensions* -> *Install from URL* -> Enter URL of this repository -> Press *Install* button
@@ -30,33 +41,6 @@ I didn't make any models, and most of the code was heavily borrowed from the [De
 1. *(optional)* Add interrogate model
    - #### [*Waifu Diffusion 1.4 Tagger by MrSmilingWolf*](docs/what-is-wd14-tagger.md)
       Downloads automatically from the [HuggingFace repository](https://huggingface.co/SmilingWolf/wd-v1-4-vit-tagger) the first time you run it.
-
-   - #### *DeepDanbooru*
-      1. Various model files can be found below.
-         - [DeepDanbooru models](https://github.com/KichangKim/DeepDanbooru/releases)
-         - [e621 model by 🐾Zack🐾#1984](https://discord.gg/BDFpq9Yb7K)
-            *(link contains NSFW contents!)*
-
-      1. Move the project folder containing the model and config to `models/deepdanbooru`
-
-      1. The file structure should look like:
-         ```
-         models/
-         └╴deepdanbooru/
-           ├╴deepdanbooru-v3-20211112-sgd-e28/
-           │ ├╴project.json
-           │ └╴...
-           │
-           ├╴deepdanbooru-v4-20200814-sgd-e30/
-           │ ├╴project.json
-           │ └╴...
-           │
-           ├╴e621-v3-20221117-sgd-e32/
-           │ ├╴project.json
-           │ └╴...
-           │
-           ...
-         ```
 
 1. Start or restart the WebUI.
    - or you can press refresh button after *Interrogator* dropdown box.
