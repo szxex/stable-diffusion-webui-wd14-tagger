@@ -10,7 +10,10 @@ from PIL import Image, UnidentifiedImageError
 
 from modules.call_queue import wrap_gradio_gpu_call
 from modules import ui
-from modules import generation_parameters_copypaste as parameters_copypaste
+try:
+    from modules import generation_parameters_copypaste as parameters_copypaste
+except ImportError:
+    from modules import infotext_utils as parameters_copypaste 
 
 from tagger import format, utils
 from tagger.utils import split_str
@@ -200,7 +203,7 @@ def on_interrogate(
                     print(f'skipping {path}')
                     continue
 
-            ratings, tags = interrogator.interrogate(image)
+            ratings, tags = interrogator.interrogate(image,*process_opts,**process_kwargs)
             processed_tags = Interrogator.postprocess_tags(
                 tags,
                 *postprocess_opts
@@ -247,10 +250,19 @@ def on_interrogate(
 
     return ['', None, None, '']
 
+def RowCompat(*args, **kwargs):
+    row = gr.Row(*args)
+
+    # 古いgradioにstyleがある場合
+    if hasattr(row, "style"):
+        return row.style(**kwargs)
+    
+    # 新しいgradioはそのまま
+    return gr.Row(*args, **kwargs)
 
 def on_ui_tabs():
     with gr.Blocks(analytics_enabled=False) as tagger_interface:
-        with gr.Row().style(equal_height=False):
+        with RowCompat(equal_height=False):
             with gr.Column(variant='panel'):
 
                 # input components
