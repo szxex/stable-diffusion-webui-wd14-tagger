@@ -1,5 +1,6 @@
 import os
 import gc
+import re
 import pandas as pd
 import numpy as np
 
@@ -13,7 +14,8 @@ from huggingface_hub import hf_hub_download
 
 
 from modules import shared
-from modules.deepbooru import re_special as tag_escape_pattern
+
+tag_escape_pattern = re.compile(r'([\\()])')
 
 # i'm not sure if it's okay to add this file to the repository
 from . import dbimutils
