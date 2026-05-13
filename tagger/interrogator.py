@@ -11,6 +11,7 @@ from PIL import Image
 from pathlib import Path
 from huggingface_hub import hf_hub_download
 
+
 from modules import shared
 from modules.deepbooru import re_special as tag_escape_pattern
 
@@ -108,7 +109,8 @@ class Interrogator:
     def interrogate(
         self,
         image: Image,
-        threshold=0.35
+        threshold=0.35,
+        **kwargs
     ) -> Tuple[
         Dict[str, float],  # rating confidents
         Dict[str, float]  # tag confidents
@@ -180,7 +182,8 @@ class DeepDanbooruInterrogator(Interrogator):
     def interrogate(
         self,
         image: Image,
-        threshold=0.35
+        threshold=0.35,
+        **kwargs
     ) -> Tuple[
         Dict[str, float],  # rating confidents
         Dict[str, float]  # tag confidents
@@ -269,7 +272,8 @@ class WaifuDiffusionInterrogator(Interrogator):
     def interrogate(
         self,
         image: Image,
-        threshold=0.35
+        threshold=0.35,
+        **kwargs
     ) -> Tuple[
         Dict[str, float],  # rating confidents
         Dict[str, float]  # tag confidents
@@ -318,7 +322,7 @@ class WaifuDiffusionInterrogator(Interrogator):
 
         return ratings, tags
 
-class TransformerInterrogator(Interrogator):
+class OracleInterrogator(Interrogator):
     def __init__(
         self,
         name,
@@ -332,7 +336,7 @@ class TransformerInterrogator(Interrogator):
         self.preproc_path = preproc_path
         self.kwargs = kwargs
         
-    def download(self) -> Tuple[os.PathLike, os.PathLike, os.PathLike]:
+    def download(self) -> Tuple[os.PathLike, os.PathLike,  Optional[os.PathLike]]:
         print(f"Loading {self.name} model file from {self.kwargs['repo_id']}")
 
         model_path = Path(hf_hub_download(
@@ -383,7 +387,7 @@ class TransformerInterrogator(Interrogator):
         # 5. preprocessing
         # ----------------------------
         with open(preproc_path, "r", encoding="utf-8") as f:
-                self.preproc = json.load(f)
+            self.preproc = json.load(f)
 
         self.image_size = int(self.preproc["image_size"])
         self.pad_color = tuple(self.preproc["pad_color_rgb"])
@@ -420,7 +424,7 @@ class TransformerInterrogator(Interrogator):
 
         return arr.astype(np.float32), mask
 
-    def interrogate(self, image, threshold=0.35):
+    def interrogate(self, image, threshold=0.35,**kwargs):
         if not hasattr(self, "model"):
                 self.load()
 
@@ -467,11 +471,13 @@ class PixAIInterrogator(Interrogator):
     model_path='model.onnx',
     tags_path='selected_tags.csv',
     preproc_path='preprocess.json',
+    character_thresholds=None,
     **kwargs):
         super().__init__(name)
         self.model_path = model_path
         self.tags_path = tags_path
         self.preproc_path = preproc_path
+        self.character_thresholds = character_thresholds
         self.kwargs = kwargs
 
         self.model = None
@@ -589,9 +595,15 @@ class PixAIInterrogator(Interrogator):
     # wd14-compatible API
     # -------------------------
     def interrogate(self, image,
-        threshold=0.35):
+        threshold=0.35,**kwargs):
         if self.model is None:
             self.load()
+
+        character_thresholds = kwargs.get("character_thresholds", self.character_thresholds)
+        if character_thresholds is None:
+            character_thresholds = 0
+        else:
+            character_thresholds = float(character_thresholds)
 
         values = self._predict(image)
 
@@ -609,16 +621,18 @@ class PixAIInterrogator(Interrogator):
             category_pred = prediction[mask]
 
             cat_tags = {}
-
-            for name, score in zip(tag_names, category_pred):
-                cat_tags[name] = float(score)
-
             # category名取得（PixAI仕様）
             cat_name = str(category)
 
             values_key = values.get("category_names", {})
             if values_key:
                 cat_name = values_key.get(category, cat_name)
+
+            for name, score in zip(tag_names, category_pred):
+                if cat_name == "4" and float(score) >= character_thresholds:
+                    cat_tags[name] = float(score)
+                elif cat_name == "0":
+                    cat_tags[name] = float(score)
 
             if cat_name == "0":
                 general = cat_tags
@@ -651,6 +665,188 @@ class PixAIInterrogator(Interrogator):
             ratings[ip] = 1.0
         return ratings, tags
 
+class CamieInterrogator(Interrogator):
+    def __init__(
+        self,
+        name,
+        model_path="model.onnx",
+        metadata_path="metadata.json",
+        category_thresholds=None,
+        min_confidence=0.1,
+        fmt=("rating", "general", "character"),
+        **kwargs
+    ):
+        super().__init__(name)
+        self.model_path = model_path
+        self.metadata_path = metadata_path
+        self.category_thresholds = category_thresholds
+        self.min_confidence = min_confidence
+        self.fmt = fmt
+        self.kwargs = kwargs
+
+    def download(self):
+        from huggingface_hub import hf_hub_download
+        from pathlib import Path
+
+        model_path = Path(hf_hub_download(
+            **self.kwargs,
+            filename=self.model_path
+        ))
+
+        metadata_path = Path(hf_hub_download(
+            **self.kwargs,
+            filename=self.metadata_path
+        ))
+
+        return model_path, metadata_path
+
+    def load(self):
+        import json
+        import onnxruntime as ort
+
+        model_path, metadata_path = self.download()
+
+        # --- metadata ---
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+
+        self.metadata = metadata
+
+        # --- providers自動選択 ---
+        providers = []
+        try:
+            if ort.get_device() == "GPU":
+                providers.append("CUDAExecutionProvider")
+        except Exception:
+            pass
+        providers.append("CPUExecutionProvider")
+
+        # --- session ---
+        self.model = ort.InferenceSession(
+            str(model_path),
+            providers=providers
+        )
+
+        self.input_name = self.model.get_inputs()[0].name
+
+        # --- tag mapping ---
+        if 'dataset_info' in metadata:
+            mapping = metadata['dataset_info']['tag_mapping']
+            self.idx_to_tag = mapping['idx_to_tag']
+            self.tag_to_category = mapping['tag_to_category']
+        else:
+            self.idx_to_tag = metadata.get('idx_to_tag', {})
+            self.tag_to_category = metadata.get('tag_to_category', {})
+
+        self.image_size = metadata.get('model_info', {}).get('img_size', 512)
+
+        return True
+
+    # --- preprocess ---
+    def preprocess(self, image):
+        import numpy as np
+        from PIL import Image
+        import torchvision.transforms as transforms
+
+        if image.mode in ('RGBA', 'P'):
+            image = image.convert('RGB')
+
+        w, h = image.size
+        aspect = w / h
+
+        if aspect > 1:
+            new_w = self.image_size
+            new_h = int(new_w / aspect)
+        else:
+            new_h = self.image_size
+            new_w = int(new_h * aspect)
+
+        image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        pad_color = (124, 116, 104)
+        canvas = Image.new('RGB', (self.image_size, self.image_size), pad_color)
+
+        paste_x = (self.image_size - new_w) // 2
+        paste_y = (self.image_size - new_h) // 2
+        canvas.paste(image, (paste_x, paste_y))
+
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
+        ])
+
+        return transform(canvas).numpy()
+
+    def interrogate(self, image, threshold=0.35,**kwargs):
+        import numpy as np
+
+        if not hasattr(self, "model"):
+            self.load()
+        
+        fmt = kwargs.get("fmt", self.fmt)
+        
+        category_thresholds = kwargs.get("category_thresholds", self.category_thresholds)
+
+        # --- preprocess ---
+        img = self.preprocess(image)
+        img = np.expand_dims(img, 0)
+
+        # --- inference ---
+        outputs = self.model.run(None, {self.input_name: img})
+
+        # --- refined優先 ---
+        logits = outputs[1] if len(outputs) >= 2 else outputs[0]
+
+        probs = 1.0 / (1.0 + np.exp(-logits))
+        probs = probs[0]
+
+        # --- 整理 ---
+        all_probs = {}
+        for idx, prob in enumerate(probs):
+            prob = float(prob)
+            if prob < self.min_confidence:
+                continue
+
+            tag = self.idx_to_tag.get(str(idx), f"unknown-{idx}")
+            cat = self.tag_to_category.get(tag, "general")
+
+            if cat not in all_probs:
+                all_probs[cat] = []
+
+            all_probs[cat].append((tag, prob))
+
+        # sort
+        for cat in all_probs:
+            all_probs[cat].sort(key=lambda x: x[1], reverse=True)
+
+        # threshold適用
+        selected = {}
+        for cat, items in all_probs.items():
+            if category_thresholds and cat in category_thresholds:
+                th = category_thresholds[cat]
+            else:
+                th = 0
+
+            selected[cat] = [(t, p) for t, p in items if p >= th]
+
+        # --- fmtフィルタ ---
+        selected = {k: v for k, v in selected.items() if k in fmt}
+
+        # --- 出力整形 ---
+        ratings = dict(selected.get("rating", []))
+
+        tags = {
+            tag: prob
+            for cat, items in selected.items()
+            if cat != "rating"
+            for tag, prob in items
+        }
+
+        return ratings, tags
+
 
 class GeneralInterrogator(Interrogator):
     def __init__(
@@ -658,16 +854,18 @@ class GeneralInterrogator(Interrogator):
         name,
         model_path='model.onnx',
         tags_path='selected_tags.csv',
-        key_name='confidents',
         doStd=True,
+        normalize={"mean":[0.5,0.5,0.5],"std":[0.5,0.5,0.5]},
+        rgb="RGB",
         **kwargs):
         super().__init__(name)
         self.model_path = model_path
         self.tags_path = tags_path
-        self.key_name = key_name
         self.doStd = doStd
+        self.normalize = normalize
+        self.rgb = rgb
         self.kwargs = kwargs
-        
+
     def download(self) -> Tuple[os.PathLike, os.PathLike]:
         print(f"Loading {self.name} model file from {self.kwargs['repo_id']}")
 
@@ -726,7 +924,7 @@ class GeneralInterrogator(Interrogator):
             return "NHWC"
         return "NCHW"
 
-    def interrogate(self, image, threshold=0.35):
+    def interrogate(self, image, threshold=0.35,**kwargs):
         if not hasattr(self, "model"):
                 self.load()
 
@@ -746,17 +944,29 @@ class GeneralInterrogator(Interrogator):
         image = new_image.convert('RGB')
         image = np.asarray(image)
 
-        #image = image[:, :, ::-1]  # BGR
+        if self.rgb == "BGR":
+            image = image[:, :, ::-1]  # BGR
 
         image = dbimutils.make_square(image, height)
         image = dbimutils.smart_resize(image, height)
 
         image = image.astype(np.float32)
         #正規化
-        if self,doStd:
+        if self.doStd:
             image = image / 255.0
+       
         if layout == "NCHW":
             image = image.transpose(2, 0, 1)
+            if self.normalize is not None:
+                mean = np.array(self.normalize["mean"], dtype=np.float32).reshape(3, 1, 1)
+                std = np.array(self.normalize["std"], dtype=np.float32).reshape(3, 1, 1)
+                image = (image - mean) / std
+        else:
+            if self.normalize is not None:
+                mean = np.array(self.normalize["mean"], dtype=np.float32).reshape(1, 1, 3)
+                std = np.array(self.normalize["std"], dtype=np.float32).reshape(1, 1, 3)
+                image = (image - mean) / std
+
 
         image = np.expand_dims(image, 0)
 
