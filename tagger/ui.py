@@ -76,6 +76,7 @@ def on_interrogate(
     interrogator: str,
     interrogator_option: str,
     threshold: float,
+    character_threshold: float,
     additional_tags: str,
     exclude_tags: str,
     sort_by_alphabetical_order: bool,
@@ -98,6 +99,7 @@ def on_interrogate(
 
     postprocess_opts = (
         threshold,
+        character_threshold,
         split_str(additional_tags),
         split_str(exclude_tags),
         sort_by_alphabetical_order,
@@ -109,19 +111,25 @@ def on_interrogate(
 
     # single process
     if image is not None:
-        ratings, tags = interrogator.interrogate(image,*process_opts,**process_kwargs)
+        categories, ratings, tags, characters = interrogator.interrogate(image,*process_opts,**process_kwargs)
         processed_tags = Interrogator.postprocess_tags(
             tags,
+            characters,
             *postprocess_opts
         )
 
         if unload_model_after_running:
             interrogator.unload()
 
+        cat = ', '.join(f'"{c}"' for c in sorted(categories))
+        cat_threshold = ', '.join(f'"{c}":{threshold}' for c in sorted(categories))
+        
         return [
+            f"categories={{{cat}}},category_thresholds={{{cat_threshold}}}",
             ', '.join(processed_tags),
             ratings,
             tags,
+            dict(list(characters.items())[:10]),
             ''
         ]
 
@@ -203,9 +211,10 @@ def on_interrogate(
                     print(f'skipping {path}')
                     continue
 
-            ratings, tags = interrogator.interrogate(image,*process_opts,**process_kwargs)
+            categories, ratings, tags, characters = interrogator.interrogate(image)
             processed_tags = Interrogator.postprocess_tags(
                 tags,
+                characters,
                 *postprocess_opts
             )
 
@@ -240,7 +249,7 @@ def on_interrogate(
 
             if batch_output_save_json:
                 output_path.with_suffix('.json').write_text(
-                    json.dumps([ratings, tags])
+                    json.dumps([ratings, characters, tags])
                 )
 
         print('all done :)')
@@ -248,7 +257,7 @@ def on_interrogate(
     if unload_model_after_running:
         interrogator.unload()
 
-    return ['', None, None, '']
+    return ['', '', None, None, None, '']
 
 def RowCompat(*args, **kwargs):
     row = gr.Row(*args)
@@ -414,7 +423,13 @@ def on_ui_tabs():
                     maximum=1,
                     value=0.35
                 )
-
+                character_threshold = utils.preset.component(
+                    gr.Slider,
+                    label='Character Threshold',
+                    minimum=0,
+                    maximum=1,
+                    value=0.35
+                )
                 additional_tags = utils.preset.component(
                     gr.Textbox,
                     label='Additional tags (split by comma)',
@@ -472,10 +487,22 @@ def on_ui_tabs():
                         None,
                         tags
                     )
-
+                with gr.Accordion(
+                    label='Categories',
+                    open=False
+                ):
+                    categories = gr.Textbox(
+                        label='categories',
+                        placeholder='model categories',
+                        interactive=False
+                    )
                 rating_confidents = gr.Label(
                     label='Rating confidents',
                     elem_id='rating-confidents'
+                )
+                character_confidents = gr.Label(
+                    label='Character confidents',
+                    elem_id='character-confidents'
                 )
                 tag_confidents = gr.Label(
                     label='Tag confidents',
@@ -520,6 +547,7 @@ def on_ui_tabs():
                     interrogator,
                     interrogator_option,
                     threshold,
+                    character_threshold,
                     additional_tags,
                     exclude_tags,
                     sort_by_alphabetical_order,
@@ -531,10 +559,11 @@ def on_ui_tabs():
                     unload_model_after_running
                 ],
                 outputs=[
+                    categories,
                     tags,
                     rating_confidents,
                     tag_confidents,
-
+                    character_confidents,
                     # contains execution time, memory usage and other stuffs...
                     # generated from modules.ui.wrap_gradio_call
                     info
