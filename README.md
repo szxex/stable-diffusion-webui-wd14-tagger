@@ -49,9 +49,8 @@ This branch is a fork of WD14Tagger maintained by @Akegarasu
 [Model comparison](docs/model-comparison.md)
 
 ## Screenshot
-![Screenshot](docs/screenshot.png)
+![Screenshot](docs/screenshot1.png)
 
-Artwork made by [hecattaart](https://vk.com/hecattaart?w=wall-89063929_3767)
 
 ## Copyright
 
