@@ -5,9 +5,15 @@ from typing import List, Dict
 from pathlib import Path
 
 from modules import shared, scripts
-from preload import default_ddp_path
 from tagger.preset import Preset
-from tagger.interrogator import Interrogator,MLDanbooruInterrogator, WaifuDiffusionInterrogator, OracleInterrogator, PixAIInterrogator,CamieInterrogator,CLInterrogator, GeneralInterrogator
+from tagger.interrogator import Interrogator\
+    , MLDanbooruInterrogator\
+    , WaifuDiffusionInterrogator\
+    , OracleInterrogator\
+    , PixAIInterrogator\
+    , CamieInterrogator\
+    , CLInterrogator\
+    , GeneralInterrogator
 
 preset = Preset(Path(scripts.basedir(), 'presets'))
 
@@ -114,23 +120,6 @@ def refresh_interrogators() -> List[str]:
         #      *default is "RGB",If the results look strange, setting it to “BGR” might fix the problem.
         #),
     }
-
-    # load deepdanbooru project
-    deepdanbooru_projects_path = 'models/torch_deepdanbooru'
-    shared.cmd_opts.deepdanbooru_projects_path = deepdanbooru_projects_path
-    os.makedirs(
-        getattr(shared.cmd_opts, 'deepdanbooru_projects_path', default_ddp_path),
-        exist_ok=True
-    )
-
-    for path in os.scandir(shared.cmd_opts.deepdanbooru_projects_path):
-        if not path.is_dir():
-            continue
-
-        if not Path(path, 'project.json').is_file():
-            continue
-
-        interrogators[path.name] = DeepDanbooruInterrogator(path.name, path)
 
     return sorted(interrogators.keys())
 
