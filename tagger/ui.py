@@ -63,6 +63,53 @@ def parse_kwargs(kwargs_str: str) -> dict:
     except ValueError as e:
         raise ValueError(f"安全に評価できない値が含まれています: {kwargs_str}") from e
 
+# カテゴリのリストを受け取り、カテゴリごとの閾値を文字列として返す関数
+def categories_to_text(
+        categories: list,
+        threshold: float,
+        character_threshold: float
+    ) -> str:
+    if not categories:
+        return ""
+    threshold_map = {
+        "character": character_threshold,
+    }
+
+    # カテゴリごとの閾値
+    cat_threshold = ', '.join(
+        f'"{c}":{threshold_map.get(c, threshold)}'
+        for c in sorted(categories)
+    )
+
+    return f"category_thresholds={{{cat_threshold}}}"
+
+#モデルのカテゴリ読み込み
+def load_interrogator_categories(
+    prev_selected: list,
+    interrogator: str,
+    prev_interrogator: str
+):
+    if interrogator not in utils.interrogators:
+        return (gr.update(choices=[], value=[],interactive=True), interrogator)
+
+    interrogator_model: Interrogator = utils.interrogators[interrogator]
+
+    categories,tags = interrogator_model.load_tags()
+    categories = sorted(list(categories))
+    if interrogator != prev_interrogator:
+        #If the interrogator has been changed, reset the selected categories to all categories of the new interrogator.
+        new_value = categories
+    else:
+        new_value = [c for c in prev_selected if c in categories]
+    if (
+        interrogator == prev_interrogator and
+        set(prev_selected) == set(new_value)
+    ):
+        # 何も変わってないので再描画しない
+        return (gr.update(), interrogator)
+
+    return (gr.update(choices=categories, value=new_value,interactive=True), interrogator)
+
 def on_interrogate(
     image: Image,
     batch_input_glob: str,
@@ -77,6 +124,7 @@ def on_interrogate(
     interrogator_option: str,
     threshold: float,
     character_threshold: float,
+    categories_checkbox: list,
     additional_tags: str,
     exclude_tags: str,
     sort_by_alphabetical_order: bool,
@@ -84,18 +132,23 @@ def on_interrogate(
     replace_underscore: bool,
     replace_underscore_excludes: str,
     escape_tag: bool,
+    display_max_tags: int,
 
     unload_model_after_running: bool
 ):
     if interrogator not in utils.interrogators:
-        return ['', None, None, f"'{interrogator}' is not a valid interrogator"]
+        return ['', None, None, None, f"'{interrogator}' is not a valid interrogator"]
 
     interrogator: Interrogator = utils.interrogators[interrogator]
 
+    categories = set(categories_checkbox)
+
     process_opts = (
-        threshold,
     )
-    process_kwargs = parse_kwargs(interrogator_option)
+    process_kwargs = {
+        **parse_kwargs(interrogator_option),
+        "categories": categories
+    }
 
     postprocess_opts = (
         threshold,
@@ -120,15 +173,12 @@ def on_interrogate(
 
         if unload_model_after_running:
             interrogator.unload()
-
-        cat = ', '.join(f'"{c}"' for c in sorted(categories))
-        cat_threshold = ', '.join(f'"{c}":{threshold}' for c in sorted(categories))
-        
+     
+     
         return [
-            f"categories={{{cat}}},category_thresholds={{{cat_threshold}}}",
             ', '.join(processed_tags),
             ratings,
-            tags,
+            dict(list(tags.items())[:display_max_tags]),
             dict(list(characters.items())[:10]),
             ''
         ]
@@ -151,7 +201,7 @@ def on_interrogate(
 
         # check the input directory path
         if not os.path.isdir(base_dir):
-            return ['', None, None, 'input path is not a directory']
+            return ['', None, None, None, 'input path is not a directory']
 
         # this line is moved here because some reason
         # PIL.Image.registered_extensions() returns only PNG if you call too early
@@ -211,7 +261,7 @@ def on_interrogate(
                     print(f'skipping {path}')
                     continue
 
-            categories, ratings, tags, characters = interrogator.interrogate(image)
+            categories, ratings, tags, characters = interrogator.interrogate(image,*process_opts,**process_kwargs)
             processed_tags = Interrogator.postprocess_tags(
                 tags,
                 characters,
@@ -257,7 +307,7 @@ def on_interrogate(
     if unload_model_after_running:
         interrogator.unload()
 
-    return ['', '', None, None, None, '']
+    return ['', None, None, None, '']
 
 def RowCompat(*args, **kwargs):
     row = gr.Row(*args)
@@ -271,6 +321,8 @@ def RowCompat(*args, **kwargs):
 
 def on_ui_tabs():
     with gr.Blocks(analytics_enabled=False) as tagger_interface:
+        #state
+        prev_interrogator_state = gr.State("")
         with RowCompat(equal_height=False):
             with gr.Column(variant='panel'):
 
@@ -430,6 +482,20 @@ def on_ui_tabs():
                     maximum=1,
                     value=0.35
                 )
+
+                with gr.Accordion(
+                    label='Categories',
+                    open=False
+                ):
+                    load_categories = gr.Button(
+                        value='Load Categories'
+                    )
+                    categories_checkbox = gr.CheckboxGroup(label="Categories")
+                    categories_text = gr.Textbox(
+                        label="Categories (Threshold)",
+                        interactive=False
+                    )
+
                 additional_tags = utils.preset.component(
                     gr.Textbox,
                     label='Additional tags (split by comma)',
@@ -471,6 +537,14 @@ def on_ui_tabs():
                     label='Unload model after running',
                 )
 
+                display_max_tags = utils.preset.component(
+                    gr.Number,
+                    label='Display tags',
+                    elem_id='display_max_tags',
+                    value=1000,
+                    precision=0
+                )
+
             # output components
             with gr.Column(variant='panel'):
                 tags = gr.Textbox(
@@ -487,15 +561,7 @@ def on_ui_tabs():
                         None,
                         tags
                     )
-                with gr.Accordion(
-                    label='Categories',
-                    open=False
-                ):
-                    categories = gr.Textbox(
-                        label='categories',
-                        placeholder='model categories',
-                        interactive=False
-                    )
+
                 rating_confidents = gr.Label(
                     label='Rating confidents',
                     elem_id='rating-confidents'
@@ -508,6 +574,7 @@ def on_ui_tabs():
                     label='Tag confidents',
                     elem_id='tag-confidents'
                 )
+
 
         # register events
         selected_preset.change(
@@ -526,9 +593,28 @@ def on_ui_tabs():
             fn=unload_interrogators,
             outputs=[info]
         )
+        
+        load_categories.click(
+            fn=load_interrogator_categories,
+            inputs=[categories_checkbox,interrogator,prev_interrogator_state],
+            outputs=[categories_checkbox,prev_interrogator_state]
+        )
+
+        for func in [categories_checkbox.change, threshold.change, character_threshold.change]:
+            func(
+                fn=categories_to_text,
+                inputs=[categories_checkbox, threshold, character_threshold],
+                outputs=[categories_text]
+            )
 
         for func in [image.change, submit.click]:
-            func(
+            
+            event = func(
+                fn=load_interrogator_categories,
+                inputs=[categories_checkbox,interrogator,prev_interrogator_state],
+                outputs=[categories_checkbox,prev_interrogator_state]
+            )
+            event.then(
                 fn=wrap_gradio_gpu_call(on_interrogate),
                 inputs=[
                     # single process
@@ -548,6 +634,7 @@ def on_ui_tabs():
                     interrogator_option,
                     threshold,
                     character_threshold,
+                    categories_checkbox,
                     additional_tags,
                     exclude_tags,
                     sort_by_alphabetical_order,
@@ -555,11 +642,11 @@ def on_ui_tabs():
                     replace_underscore,
                     replace_underscore_excludes,
                     escape_tag,
+                    display_max_tags,
 
                     unload_model_after_running
                 ],
                 outputs=[
-                    categories,
                     tags,
                     rating_confidents,
                     tag_confidents,
@@ -569,5 +656,6 @@ def on_ui_tabs():
                     info
                 ]
             )
+
 
     return [(tagger_interface, "Tagger", "tagger")]

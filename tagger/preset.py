@@ -7,7 +7,6 @@ from modules.images import sanitize_filename_part
 
 PresetDict = Dict[str, Dict[str, any]]
 
-
 class Preset:
     base_dir: Path
     default_filename: str

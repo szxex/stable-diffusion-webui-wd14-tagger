@@ -21,10 +21,12 @@ This branch is a fork of WD14Tagger maintained by @Akegarasu
 - [PixAI Tagger v0.9 (with EVA02-Large Encoder)](https://huggingface.co/etset/pixai-tagger-v0.9E)
 
 ### Add Feater
-  - `Interrogator Option`
+
+  - `Categories`
       - 'categories'
-         - Set the specified categories as the output targets. 
-         - ex) categories=('artist','character','copyright','general','meta','rating','year') 
+         - Check the specified categories as the output targets. 
+
+  - `Interrogator Option`
       - 'category_thresholds'
          - Set a threshold for each specified category. By default, all categories use the same threshold.
          - ex) category_thresholds={"artist":0.5,"character":0.8,"copyright":0.7,"general":0.3,"meta":0.2,"rating":0.5,"year":0.2} 
