@@ -4,9 +4,9 @@ import json
 from typing import Tuple, List, Dict
 from pathlib import Path
 from modules.images import sanitize_filename_part
+import gradio as gr
 
 PresetDict = Dict[str, Dict[str, any]]
-
 
 class Preset:
     base_dir: Path
@@ -88,10 +88,17 @@ class Preset:
             config = values.get(component.path, {})
 
             if 'value' in config and hasattr(component, 'choices'):
-                if config['value'] not in component.choices:
-                    config['value'] = None
+                choices = component.choices
+                # tuple形式対応
+                if choices and isinstance(choices[0], (list, tuple)):
+                    choice_values = [c[1] for c in choices]
+                else:
+                    choice_values = choices
 
-            outputs.append(component.update(**config))
+                if config['value'] not in choice_values:
+                   config['value'] = None
+
+            outputs.append(gr.update(**config))
 
         return (*outputs, 'successfully loaded the preset')
 
