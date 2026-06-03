@@ -554,13 +554,27 @@ def on_ui_tabs():
                 )
 
                 with gr.Row():
-                    parameters_copypaste.bind_buttons(
-                        parameters_copypaste.create_buttons(
+                    if hasattr(parameters_copypaste, 'bind_buttons'):
+                        parameters_copypaste.bind_buttons(
+                            parameters_copypaste.create_buttons(
+                                ["txt2img", "img2img"],
+                            ),
+                            None,
+                            tags
+                        )
+                    else:
+                        copypaste_buttons = parameters_copypaste.create_buttons(
                             ["txt2img", "img2img"],
-                        ),
-                        None,
-                        tags
-                    )
+                        )
+                        for tabname, button in copypaste_buttons.items():
+                            parameters_copypaste.register_paste_params_button(
+                                parameters_copypaste.ParamBinding(
+                                    paste_button=button,
+                                    tabname=tabname,
+                                    source_text_component=tags,
+                                )
+                            )
+                        parameters_copypaste.connect_paste_params_buttons()
 
                 rating_confidents = gr.Label(
                     label='Rating confidents',
