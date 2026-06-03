@@ -29,8 +29,12 @@ from . import dbimutils
 # デバイス選択（CPU / GPU）
 # Select execution device (CPU or GPU)
 # -------------------------
-use_cpu = ('all' in shared.cmd_opts.use_cpu) or (
-    'interrogate' in shared.cmd_opts.use_cpu)
+if hasattr(shared.cmd_opts, 'use_cpu'):
+    use_cpu = ('all' in shared.cmd_opts.use_cpu) or (
+        'interrogate' in shared.cmd_opts.use_cpu)
+else:
+    # デフォルトはGPU使用
+    use_cpu = False
 
 if use_cpu:
     tf_device_name = '/cpu:0'
