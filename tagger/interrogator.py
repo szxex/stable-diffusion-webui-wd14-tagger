@@ -970,7 +970,8 @@ class CLInterrogator(Interrogator):
         #Image Preprocess
         image = self._general_preproccess(
             self.model,
-            image
+            image,
+            rgb="BGR"
         )
         
         self.input_name = self.model.get_inputs()[0].name
