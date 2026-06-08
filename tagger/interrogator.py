@@ -319,7 +319,7 @@ class MLDanbooruInterrogator(Interrogator):
         return ModelFactory.load(
             model_path,
             param=ModelParam(
-                color_format="RBG",
+                color_format="RGB",
                 use_normalize=True,
                 normalize_mean=None,
                 normalize_std=None
