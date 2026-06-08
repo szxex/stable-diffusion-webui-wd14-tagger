@@ -319,7 +319,7 @@ class MLDanbooruInterrogator(Interrogator):
         return ModelFactory.load(
             model_path,
             param=ModelParam(
-                color_format="BGR",
+                color_format="RBG",
                 use_normalize=True,
                 normalize_mean=None,
                 normalize_std=None
@@ -332,6 +332,9 @@ class MLDanbooruInterrogator(Interrogator):
         # Run inference
         return self.model(**{self.model.input_names[0]: processed_image})
 
+# =========================
+# OppaiOracle Interrogator
+# =========================
 class OracleInterrogator(Interrogator):
     def __init__(
         self,
