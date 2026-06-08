@@ -18,6 +18,7 @@ except ImportError:
 from tagger import format, utils
 from tagger.utils import split_str
 from tagger.interrogator import Interrogator
+from tagger.tag_processor import TagProcessor, TagResult
 
 
 def unload_interrogators():
@@ -164,10 +165,13 @@ def on_interrogate(
 
     # single process
     if image is not None:
-        categories, ratings, tags, characters = interrogator.interrogate(image,*process_opts,**process_kwargs)
-        processed_tags = Interrogator.postprocess_tags(
-            tags,
-            characters,
+        result: TagResult = TagProcessor.tag_grouping(
+            interrogator.interrogate(image,*process_opts,**process_kwargs)
+        )
+
+        processed_tags = TagProcessor.postprocess_tags(
+            result.tags,
+            result.characters,
             *postprocess_opts
         )
 
@@ -177,9 +181,9 @@ def on_interrogate(
      
         return [
             ', '.join(processed_tags),
-            ratings,
-            dict(list(tags.items())[:display_max_tags]),
-            dict(list(characters.items())[:10]),
+            result.ratings,
+            dict(list(result.tags.items())[:display_max_tags]),
+            dict(list(result.characters.items())[:10]),
             ''
         ]
 
@@ -261,16 +265,18 @@ def on_interrogate(
                     print(f'skipping {path}')
                     continue
 
-            categories, ratings, tags, characters = interrogator.interrogate(image,*process_opts,**process_kwargs)
-            processed_tags = Interrogator.postprocess_tags(
-                tags,
-                characters,
+            result: TagResult = TagProcessor.tag_grouping(
+                interrogator.interrogate(image,*process_opts,**process_kwargs)
+            )
+            processed_tags = TagProcessor.postprocess_tags(
+                result.tags,
+                result.characters,
                 *postprocess_opts
             )
 
             # TODO: switch for less print
             print(
-                f'found {len(processed_tags)} tags out of {len(tags)} from {path}'
+                f'found {len(processed_tags)} tags out of {len(result.tags)} from {path}'
             )
 
             plain_tags = ', '.join(processed_tags)
@@ -299,7 +305,7 @@ def on_interrogate(
 
             if batch_output_save_json:
                 output_path.with_suffix('.json').write_text(
-                    json.dumps([ratings, characters, tags])
+                    json.dumps([result.tags, result.ratings, result.characters])
                 )
 
         print('all done :)')
