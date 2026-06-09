@@ -22,6 +22,10 @@ This branch is a fork of WD14Tagger maintained by @Akegarasu
 
 ### Add Feater
 
+  - `Timm(Safetensor)`
+      - Timm
+         - Support Timm safetensor model.  A "config.json" file is required.
+
   - `Categories`
       - 'categories'
          - Check the specified categories as the output targets. 
