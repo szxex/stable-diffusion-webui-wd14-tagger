@@ -19,6 +19,7 @@ This branch is a fork of WD14Tagger maintained by @Akegarasu
 - [ML-Danbooru m36_dec-3-80000](https://huggingface.co/deepghs/ml-danbooru-onnx)
 - [CL tagger v1.02](https://huggingface.co/cella110n/cl_tagger)
 - [PixAI Tagger v0.9 (with EVA02-Large Encoder)](https://huggingface.co/etset/pixai-tagger-v0.9E)
+- [Taggerine](https://huggingface.co/lodestones/taggerine)
 
 ### Add Feater
 
