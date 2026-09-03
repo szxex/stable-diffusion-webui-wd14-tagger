@@ -718,3 +718,58 @@ class GeneralTimmInterrogator(Interrogator):
     ) -> np.ndarray:
         # Timm推論
         return self.model( image=processed_image)
+
+# =========================
+# Taggerine Interrogator
+# Dinov3ベースモデル対応
+# =========================
+class TaggerineInterrogator(Interrogator):
+    def __init__(
+        self,
+        name,
+        model_path='tagger_proto.safetensors',
+        vocab_path='tagger_vocab_with_categories_and_alias_updated.json',
+        categories_map={"0":"general","1":"artist","2":"colorist","3":"copyright","4":"character","5":"species","6":"meta","7":"style","8":"lora"},
+        **kwargs):
+        super().__init__(name, use_sigmoid=True)
+        self.model_path = model_path
+        self.vocab_path = vocab_path
+        self.normalizer = Interrogator._make_category_normalizer(categories_map)
+        self.kwargs = kwargs
+
+    @override
+    def _load_tags(self) -> Tuple[Set[str], Dict[int, Dict[str, str]]]:
+        vocab_path = self._download(
+            vocab=self.vocab_path
+        )
+
+        schema = {
+            "iterator": lambda data: enumerate(data["idx2tag"]),
+            "id": lambda item: item[0],
+            "name": lambda item: item[1],
+            "category": lambda item, data: data["tag2category"].get(item[1], 0),
+        }
+        # JSON読み込み & 正規化
+        return TagLoader.load_json(vocab_path,schema,self.normalizer)
+
+    @override
+    def _load_model(self):
+        model_path = self._download(
+            model=self.model_path
+        )
+
+        # Dinov3ロード
+        return ModelFactory.load(
+            model_path,
+            model="DINOV3"
+        )
+
+    @override
+    def _interrogate_core(
+        self,
+        processed_image: np.ndarray,
+        mask: np.ndarray,
+        **kwargs
+    ) -> np.ndarray:
+        # Dinov3推論
+        return self.model( image=processed_image)

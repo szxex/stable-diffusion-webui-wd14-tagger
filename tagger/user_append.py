@@ -11,7 +11,6 @@ from tagger.interrogator import Interrogator\
     , GeneralTimmInterrogator
 
 append_interrogators: Dict[str, Interrogator] = {
-      
         #'safetensor-timm': GeneralTimmInterrogator(
         #    'safetensor-timm',
         #     repo_id='repo_id',
