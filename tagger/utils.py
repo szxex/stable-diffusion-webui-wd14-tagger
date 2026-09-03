@@ -14,7 +14,8 @@ from tagger.interrogator import Interrogator\
     , CamieInterrogator\
     , CLInterrogator\
     , GeneralInterrogator\
-    , GeneralTimmInterrogator
+    , GeneralTimmInterrogator\
+    , TaggerineInterrogator
 from tagger.user_append import append_interrogators
 
 
@@ -95,12 +96,17 @@ def refresh_interrogators() -> List[str]:
         'ML-Danbooru-dec-5-97527': MLDanbooruInterrogator(
             'ML-Danbooru-dec-5-97527',
             model_path='ml_caformer_m36_dec-5-97527.onnx',
-             repo_id='deepghs/ml-danbooru-onnx',
+            repo_id='deepghs/ml-danbooru-onnx',
         ),
         'ML-Danbooru-dec-3-80000': MLDanbooruInterrogator(
             'ML-Danbooru-dec-3-80000',
             model_path='ml_caformer_m36_dec-3-80000.onnx',
-             repo_id='deepghs/ml-danbooru-onnx',
+            repo_id='deepghs/ml-danbooru-onnx',
+        ),
+        'taggerine': TaggerineInterrogator(
+            'taggerine',
+            model_path='tagger_proto.safetensors',
+            repo_id='lodestones/taggerine',
         ),
         #'tagger-name-timm': GeneralTimmInterrogator(
         #    'tagger-name-timm',

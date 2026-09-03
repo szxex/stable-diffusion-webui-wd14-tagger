@@ -1,3 +1,4 @@
+
 import os
 from pathlib import Path
 from typing import Any, Optional, Tuple
@@ -6,6 +7,8 @@ from dataclasses import dataclass
 from PIL import Image
 from modules import shared
 import numpy as np
+
+from .models.dinov3 import DINOv3Tagger
 
 # -------------------------
 # デバイス選択（CPU / GPU）
@@ -17,6 +20,18 @@ use_cpu = False
 if hasattr(shared.cmd_opts, 'use_cpu'):
     use_cpu = ('all' in shared.cmd_opts.use_cpu) or (
         'interrogate' in shared.cmd_opts.use_cpu)
+
+class ColorFormat:
+    RGB: str = "RGB"
+    BGR: str = "BGR"
+
+class Layout:
+    NCHW: str = "NCHW"
+    NHWC: str = "NHWC"
+
+class ResizeMode:
+    PATCH_SIZE: str = "patch_size"
+    KEEP_ASPECT: str = "keep_aspect"
 
 # =========================
 # Config (Immutable)
@@ -31,11 +46,11 @@ class ModelParam:
 
     # テンソルレイアウト（NCHW / NHWC）
     # Tensor layout format
-    layout: str = "NCHW"
+    layout: str = Layout.NCHW
 
     # カラーフォーマット（RGB / BGR）
     # Color format
-    color_format: str = "RGB"
+    color_format: str = ColorFormat.RGB
 
     # パディング色
     # Padding color
@@ -53,6 +68,9 @@ class ModelParam:
     # マスクを使用するか
     # Whether to use mask
     use_mask: bool = False
+
+    # 画像リサイズモード（patch_size / keep_aspect）
+    resize_mode: str = ResizeMode.KEEP_ASPECT
 
 
 # =========================
@@ -89,6 +107,35 @@ class ImagePreprocessor:
         return image.resize((new_w, new_h), Image.BICUBIC), (new_w, new_h)
 
     @staticmethod
+    def resize_patch_size(image, size: int):
+        PATCH_SIZE = 16
+        w, h = image.size
+
+        long_edge = max(w, h)
+
+        target_long = max(
+            PATCH_SIZE,
+            (min(long_edge, size) // PATCH_SIZE) * PATCH_SIZE
+        )
+
+        scale = target_long / long_edge
+
+        new_w = max(
+            PATCH_SIZE,
+            (round(w * scale) // PATCH_SIZE) * PATCH_SIZE,
+        )
+
+        new_h = max(
+            PATCH_SIZE,
+            (round(h * scale) // PATCH_SIZE) * PATCH_SIZE,
+        )
+
+        return image.resize(
+            (new_w, new_h),
+            Image.Resampling.LANCZOS,
+        )
+
+    @staticmethod
     def pad_to_square(image: Image.Image, size: int, pad_color):
         # 正方形にパディング
         # Pad image to square
@@ -111,7 +158,7 @@ class ImagePreprocessor:
     def convert_color(arr: np.ndarray, fmt: str):
         # RGB ↔ BGR変換
         # Convert color format (RGB ↔ BGR)
-        if fmt == "BGR":
+        if fmt == ColorFormat.BGR:
             return arr[:, :, ::-1]
         return arr
 
@@ -131,7 +178,7 @@ class ImagePreprocessor:
     def transpose(arr: np.ndarray, layout: str):
         # NHWC → NCHW変換
         # Convert layout if needed
-        if layout == "NCHW":
+        if layout == Layout.NCHW:
             return arr.transpose(2, 0, 1)
         return arr
 
@@ -151,8 +198,11 @@ class ImagePreprocessor:
 
         image = cls.remove_alpha(image)
 
-        image, (w, h) = cls.resize_keep_aspect(image, param.image_size)
-        image, (x, y) = cls.pad_to_square(image, param.image_size, param.pad_color)
+        if param.resize_mode == ResizeMode.PATCH_SIZE:
+            image = cls.resize_patch_size(image, param.image_size)
+        else:
+            image, (w, h) = cls.resize_keep_aspect(image, param.image_size)
+            image, (x, y) = cls.pad_to_square(image, param.image_size, param.pad_color)
 
         arr = cls.to_numpy(image)
         arr = cls.convert_color(arr, param.color_format)
@@ -251,20 +301,20 @@ class ONNXModel(BaseModel):
         # レイアウト推定
         # Infer tensor layout
         if len(shape) != 4:
-            return "NCHW"
+            return Layout.NCHW
 
         if shape[1] in [1, 3, 4]:
-            return "NCHW"
+            return Layout.NCHW
         if shape[-1] in [1, 3, 4]:
-            return "NHWC"
+            return Layout.NHWC
 
-        return "NCHW"
+        return Layout.NCHW
 
     @staticmethod
     def _infer_size(shape, layout):
         # 入力サイズ推定
         # Infer image size
-        h = shape[2] if layout == "NCHW" else shape[1]
+        h = shape[2] if layout == Layout.NCHW else shape[1]
 
         return h if isinstance(h, int) else 448
 
@@ -380,6 +430,142 @@ class TimmModel(BaseModel):
 
         return out.cpu().numpy()
 
+class DINOv3Model(BaseModel):
+    """
+    DINOv3 BaseModel Wrapper
+
+    Responsibilities
+    ----------------
+    * ImagePreprocessor を利用した前処理（BaseModel）
+    * safetensors checkpoint のロード
+    * Device / dtype 管理
+    * NumPy ⇔ Torch 変換
+    * Raw logits の出力
+
+    Tag情報・sigmoid は Interrogator が担当する。
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        param: Optional[ModelParam] = None,
+        device: str = "cuda",
+        **kwargs            
+    ):
+        import torch
+        # ==================================================
+        # ImagePreprocessor 用設定
+        # ==================================================
+
+        param = param or ModelParam(
+            image_size=512,
+            layout=Layout.NCHW,
+            color_format=ColorFormat.RGB,
+
+            # DINOv3(ImageNet) Normalize
+            normalize_mean=[0.485, 0.456, 0.406],
+            normalize_std=[0.229, 0.224, 0.225],
+
+            use_normalize=True,
+            use_mask=False,
+
+            # ImagePreprocessor 側で実装する想定
+            resize_mode=ResizeMode.PATCH_SIZE,
+        )
+
+        super().__init__(param)
+
+        self.model_path = model_path
+
+        # ==================================================
+        # Device
+        # ==================================================
+
+        if device == "cpu":
+            self.device = torch.device("cpu")
+        elif torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+
+        # モデル読み込み
+        self._load_model()
+
+    # ======================================================
+    # Model Loader
+    # ======================================================
+
+    def _load_model(self):
+        from safetensors.torch import load_file
+        """
+        safetensors checkpoint をロードし、
+        DINOv3Tagger に復元させる。
+        """
+        # CPUでcheckpoint読込
+        state_dict = load_file(
+            self.model_path,
+            device="cpu",
+        )
+
+        # PyTorchモデル生成
+        self.model = DINOv3Tagger()
+
+        # checkpoint 復元
+        num_tags = self.model.load_checkpoint(state_dict)
+
+        # --------------------------------------------------
+        # Device / dtype
+        # --------------------------------------------------
+        self.backbone_dtype = self.model.to_device(self.device)
+
+
+    # ======================================================
+    # Inference
+    # ======================================================
+    def __call__(self, **inputs) -> np.ndarray:
+        import torch
+        """
+        Parameters
+        ----------
+        image : np.ndarray
+            Shape [1,3,H,W] (ImagePreprocessor の出力)
+
+        Returns
+        -------
+        np.ndarray
+            Shape [1,num_tags]
+
+        Raw logits を返す。
+        sigmoid は Interrogator が適用する。
+        """
+        x = inputs["image"]
+
+        # numpy -> tensor
+        if isinstance(x, np.ndarray):
+            x = torch.from_numpy(x)
+
+        elif not isinstance(x, torch.Tensor):
+            x = torch.tensor(
+                x,
+                dtype=torch.float32,
+            )
+
+        # [C,H,W] -> [1,C,H,W]
+        if x.ndim == 3:
+            x = x.unsqueeze(0)
+
+        x = x.to(
+            device=self.device,
+            dtype=self.backbone_dtype,
+        )
+
+        # 推論
+        with torch.inference_mode():
+            logits = self.model(x)
+
+        # numpy(float32)
+        return logits.float().cpu().numpy()
+
 
 # =========================
 # Factory
@@ -398,6 +584,8 @@ class ModelFactory:
             return ONNXModel(model_path, **kwargs)
 
         if ext == ".safetensors":
+            if "model" in kwargs and kwargs["model"] == "DINOV3":
+                return DINOv3Model(model_path, **kwargs)
             if "config_path" not in kwargs:
                 raise ValueError("config_path is required for safetensors")
             return TimmModel(model_path, **kwargs)

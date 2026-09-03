@@ -11,7 +11,10 @@ from tagger.interrogator import Interrogator\
     , GeneralTimmInterrogator
 
 append_interrogators: Dict[str, Interrogator] = {
-      
+        'wd-convnext-v2': WaifuDiffusionInterrogator(
+            'wd14-convnext-v2',
+            repo_id='SmilingWolf/wd-v1-4-convnext-tagger-v2'
+        ),
         #'safetensor-timm': GeneralTimmInterrogator(
         #    'safetensor-timm',
         #     repo_id='repo_id',
